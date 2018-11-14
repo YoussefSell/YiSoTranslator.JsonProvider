@@ -1,0 +1,27 @@
+﻿[
+  {
+    "Name": "Hello_text",
+    "TranslationsList": [
+      {
+        "LanguageCode": "en-US",
+        "Value": "Hello there"
+      },
+      {
+        "LanguageCode": "es-ES",
+        "Value": "Hola"
+      },
+      {
+        "LanguageCode": "ar-MA",
+        "Value": "مرحبا"
+      },
+      {
+        "LanguageCode": "zh-CN",
+        "Value": "你好"
+      },
+      {
+        "LanguageCode": "fr-FR",
+        "Value": "Salut"
+      }
+    ]
+  }
+]
