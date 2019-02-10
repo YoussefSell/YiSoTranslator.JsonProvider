@@ -3,69 +3,96 @@
     using System;
     using System.IO;
     using System.Reflection;
+    using System.Collections.Generic;
 
     [System.Diagnostics.DebuggerStepThrough]
     internal static class FileHelper
     {
+        #region static props 
+
         /// <summary>
-        /// Get the Root Folder for the project currently executing
+        /// the Root Folder for the project currently executing
         /// </summary>
-        /// <returns>the root directory of the currently executing project</returns>
-        internal static string GetProjectRootDirectory()
+        public static string ProjectRootFolder;
+
+        /// <summary>
+        /// get the Translation Directory in the root folder of the current executing project
+        /// </summary>
+        public static string TranslationFolder;
+
+        /// <summary>
+        /// the path of the backupFolder 
+        /// </summary>
+        public static string BackUpFolder;
+
+        static FileHelper()
         {
-            //get the path of the DLL file in the debug folder
-            string dllFilePath = Assembly.GetExecutingAssembly().Location;
-            return Path.GetDirectoryName(dllFilePath);
-        }
+            ProjectRootFolder = GetProjectRootDirectory();
+            TranslationFolder = GetTranslationFolder();
+            BackUpFolder = Path.Combine(ProjectRootFolder, "BackUp");
+
+            string GetProjectRootDirectory()
+            {
+                //get the path of the DLL file in the debug folder
+                string dllFilePath = Assembly.GetExecutingAssembly().Location;
+                return Path.GetDirectoryName(dllFilePath);
+            }
+
+            string GetTranslationFolder()
+            {
+                string path = Path.Combine(GetProjectRootDirectory(), "Translations");
+                if (!Directory.Exists(path))
+                    Directory.CreateDirectory(path);
+
+                return path;
+            }
+        } 
+
+        #endregion
 
         /// <summary>
-        /// create the Translation Directory in the root folder of the current executing project
+        /// Get the JSON File of the translation file name
         /// </summary>
-        /// <returns>the path to the translation directory</returns>
-        internal static string CreateTranslationDirectory()
-        {
-            string path = GetProjectRootDirectory() + @"\Translations";
-
-            Directory.CreateDirectory(path);
-
-            return path;
-        }
-
-        /// <summary>
-        /// Get the JSON File of the translation
-        /// </summary>
-        /// <param name="jsonFile"> the JSON File containing the translations</param>
+        /// <param name="fileName"> the JSON File name containing the translations</param>
         /// <returns>the full path of the JSON file</returns>
         /// <exception cref="TranslationFolderMissingExceptions">if the translation folder not found</exception>
         /// <exception cref="TranslationFileMissingExceptions">if the translation JSON file not found</exception>
         /// <exception cref="NonValidTranslationFileExtensionExceptions">if the translation file Extension not set to .json</exception>
-        internal static string GetJsonFilePath(string jsonFile)
+        internal static string GetJsonFilePath(string fileName)
         {
-            string path = GetProjectRootDirectory() + @"\Translations";
+            if (fileName.IsNull())
+                throw new ArgumentException();
 
-            if (!Directory.Exists(path))
-                throw new TranslationFolderMissingExceptions();
-
-            var file = new FileInfo(path + @"\" + jsonFile);
+            var file = new FileInfo(Path.Combine(TranslationFolder, $"{fileName}.json"));
 
             if (!file.Exists)
-                throw new TranslationFileMissingExceptions(jsonFile);
-
-            if (file.Extension != ".json")
-                throw new NonValidTranslationFileExtensionExceptions(file.Extension);
+                throw new TranslationFileMissingExceptions(fileName);
 
             return file.FullName;
         }
 
         /// <summary>
-        /// get the content of the file as string
+        /// Get the JSON File Name
         /// </summary>
-        /// <param name="file">the Translation file to read from</param>
-        /// <returns>the content</returns>
-        public static string GetContent(this TranslationFile file)
+        /// <param name="filePath"> the full path of the JSON file</param>
+        /// <returns>the full path of the JSON file</returns>
+        /// <exception cref="TranslationFolderMissingExceptions">if the translation folder not found</exception>
+        /// <exception cref="TranslationFileMissingExceptions">if the translation JSON file not found</exception>
+        /// <exception cref="NonValidTranslationFileExtensionExceptions">if the translation file Extension not set to .json</exception>
+        internal static string GetJsonFileName(string filePath)
         {
-            var path = GetJsonFilePath(file.Name);
-            return GetContent(path);
+            if (filePath.IsNull())
+                throw new ArgumentException();
+
+            var file = new FileInfo(filePath);
+
+            if (!file.Exists)
+                throw new TranslationFileMissingExceptions(filePath);
+
+            if (file.Extension != ".json")
+                throw new NonValidTranslationFileExtensionExceptions(file.Extension);
+
+            return Path.GetFileNameWithoutExtension(filePath);
         }
 
         /// <summary>
@@ -73,9 +100,9 @@
         /// </summary>
         /// <param name="file">the Translation file to read from</param>
         /// <returns>the content</returns>
-        public static string GetContent(string file)
+        internal static string GetContent(this JsonTranslationFile file)
         {
-            return File.ReadAllText(file);
+            return File.ReadAllText(file.FullName);
         }
 
         /// <summary>
@@ -87,42 +114,47 @@
         /// <exception cref="TranslationFileNotSpecifiedExceptions">if file is null or invalid</exception>
         /// <exception cref="TranslationFileMissingExceptions">if the file not exist</exception>
         /// <exception cref="NonValidTranslationFileExtensionExceptions">if the doesn't have a .json extension</exception>
-        public static bool SaveContent(this TranslationFile file, string content)
+        internal static bool SaveContent(this JsonTranslationFile file, string content)
         {
-            return SaveContent(file.FullName, content);
-        }
-
-        /// <summary>
-        /// save the translation to the given file. a full path mast be provided
-        /// </summary>
-        /// <param name="file">the full path to the file</param>
-        /// <param name="content">the content to be saved</param>
-        /// <returns>true if saved, false if a problem exist</returns>
-        /// <exception cref="TranslationFileNotSpecifiedExceptions">if file is null or invalid</exception>
-        /// <exception cref="TranslationFileMissingExceptions">if the file not exist</exception>
-        /// <exception cref="NonValidTranslationFileExtensionExceptions">if the doesn't have a .json extension</exception>
-        public static bool SaveContent(string file, string content)
-        {
-            if (file.IsNull())
-                throw new TranslationFileNotSpecifiedExceptions();
-
-            var fileinfo = new FileInfo(file);
-
-            if (fileinfo.Extension != ".json")
-                throw new NonValidTranslationFileExtensionExceptions(fileinfo.Extension);
-
-            if (!fileinfo.Exists)
-                fileinfo.Create();
-
             try
             {
-                File.WriteAllText(file, content);
+                File.WriteAllText(file.FullName, content);
                 return true;
             }
             catch (Exception)
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// validate the translation File
+        /// </summary>
+        /// <param name="file">the file to check</param>
+        /// <exception cref="ArgumentNullException">if the file is null</exception>
+        /// <exception cref="NonValidTranslationFileExtensionExceptions">if the file extension not set to JSON</exception>
+        /// <exception cref="FileNotFoundException">if the file doesn't exist</exception>
+        internal static void Validate(this JsonTranslationFile file)
+        {
+            if (file is null)
+                throw new ArgumentNullException("the file is null");
+
+            var fileinfo = new FileInfo(file.FullName);
+
+            if (fileinfo.Extension != ".json")
+                throw new NonValidTranslationFileExtensionExceptions(fileinfo.Extension);
+
+            if (!fileinfo.Exists)
+                throw new FileNotFoundException("the file is not exist");
+        }
+    }
+
+    [System.Diagnostics.DebuggerStepThrough]
+    internal static class CollectionHelpers
+    {
+        internal static string AsJson(this IEnumerable<TranslationsGroup> translations)
+        {
+            return Newtonsoft.Json.JsonConvert.SerializeObject(translations);
         }
     }
 }

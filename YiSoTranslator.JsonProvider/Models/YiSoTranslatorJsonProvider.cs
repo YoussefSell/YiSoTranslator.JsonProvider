@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace YiSoTranslator.JsonProvider
 {
     /// <summary>
-    /// a class to work with the SQLITE Database
+    /// class to work with Translations using JSON files
     /// </summary>
     [System.Diagnostics.DebuggerStepThrough]
     public class YiSoTranslatorJsonProvider : IYiSoTranslationProvider
@@ -19,27 +20,32 @@ namespace YiSoTranslator.JsonProvider
         #region Public Prop
 
         /// <summary>
-        /// the collection of translations
+        /// the collection of translations Groups
         /// </summary>
-        public IEnumerable<TranslationGroup> TranslationsGroupList
+        public IEnumerable<TranslationsGroup> TranslationsGroupsList
         {
             get => _db.TranslationsGroups;
         }
 
         /// <summary>
-        /// the total number of translations in the list
+        /// the total number of translations Groups in the list
         /// </summary>
         public int Count { get => _db.TranslationsGroups.Count; }
 
         /// <summary>
         /// the translation file
         /// </summary>
-        public TranslationFile TranslationFile { get => _db.TranslationFile; }
+        public JsonTranslationFile TranslationFile { get => _db.TranslationFile; }
 
         /// <summary>
         /// event raised when the list changed
         /// </summary>
-        public event EventHandler<TranslationGroupDataSourceChangedEventArgs> DataSourceChanged;
+        public event EventHandler<TranslationsGroupsListChangedEventArgs> TranslationsGroupsListChanged;
+
+        /// <summary>
+        /// if the translation file has been modified or deleted this event will be fired
+        /// </summary>
+        public event EventHandler<DataSourceChangedEventArgs> DataSourceChanged;
 
         #endregion
 
@@ -49,17 +55,18 @@ namespace YiSoTranslator.JsonProvider
         /// constructor with Translation file
         /// </summary>
         /// <param name="translationFile">the translation file</param>
-        public YiSoTranslatorJsonProvider(TranslationFile translationFile)
+        public YiSoTranslatorJsonProvider(JsonTranslationFile translationFile)
         {
             _db = new YiSoTranslatorJsonFileProvider(translationFile);
+            _db.DataSourceChanged += (s, e) => DataSourceChanged?.Invoke(this, e);
         }
 
         /// <summary>
-        /// constructor with the file name with extension (ex: main.json)
+        /// constructor with the file name without extension (ex: main)
         /// </summary>
-        /// <param name="filename">name of the file</param>
+        /// <param name="filename">name of the file without extension</param>
         public YiSoTranslatorJsonProvider(string filename)
-            : this(new TranslationFile(filename)) { }
+            : this(new JsonTranslationFile(filename)) { }
 
         #endregion
 
@@ -68,142 +75,163 @@ namespace YiSoTranslator.JsonProvider
         /// <summary>
         /// look for a translation group in the list by name
         /// </summary>
-        /// <param name="name">the name of the translation group</param>
-        /// <returns>the translation Group if exist, null if nothing found</returns>
-        public TranslationGroup Find(string name)
-        {
-            return _db.TranslationsGroups.FirstOrDefault(t => t.Name.ToLower() == name.ToLower());
-        }
+        /// <param name="name">the name of the translations group</param>
+        /// <returns>the translations Group if exist, null if nothing found</returns>
+        public TranslationsGroup Find(string name)
+            => _db.TranslationsGroups.FirstOrDefault(t => t.Name.ToLower() == name.ToLower());
 
         /// <summary>
         /// look for a translation group in the list by a predicate
         /// </summary>
         /// <param name="predicate">the predicate to look with</param>
         /// <returns>the list of translation Group if exist, null if nothing found</returns>
-        public IEnumerable<TranslationGroup> Find(Func<TranslationGroup, bool> predicate)
-        {
-            return _db.TranslationsGroups.Where(predicate);
-        }
+        public IEnumerable<TranslationsGroup> Find(Func<TranslationsGroup, bool> predicate)
+            => _db.TranslationsGroups.Where(predicate);
 
         /// <summary>
-        /// get the index of the given item
+        /// get the index of the given translations Group
         /// </summary>
-        /// <param name="item">the translation Group</param>
+        /// <param name="item">the translations Group</param>
         /// <returns>the index</returns>
-        public int IndexOf(TranslationGroup item)
-        {
-            return _db.TranslationsGroups.IndexOf(item);
-        }
+        public int IndexOf(TranslationsGroup item)
+            => _db.TranslationsGroups.IndexOf(item);
 
         /// <summary>
         /// determine whether the element exist in the list
         /// </summary>
-        /// <param name="item">the TranslationGroup to look for</param>
+        /// <param name="item">the TranslationsGroup to look for</param>
         /// <returns>true if exist, false if not </returns>
-        public bool Contains(TranslationGroup item)
-        {
-            return _db.TranslationsGroups.Contains(item);
-        }
+        public bool Contains(TranslationsGroup item)
+            => _db.TranslationsGroups.Contains(item);
+
+        /// <summary>
+        /// check if there is a translationsGroup with the given name
+        /// </summary>
+        /// <param name="name">the name of translationGroup</param>
+        /// <returns>true if exist, false if not</returns>
+        public bool IsExist(string name)
+            => _db.TranslationsGroups.Any(t => t.Name.ToLower() == name.ToLower());
 
         #endregion
 
         #region Read and save data
 
         /// <summary>
-        /// dispose the object
-        /// </summary>
-        public void Dispose()
-        {
-            _db.Dispose();
-        }
-
-        /// <summary>
-        /// save the translations to the dataSource
+        /// save the translations to the dataSource (JSON file associated with this instant)
         /// </summary>
         /// <returns>true if data is saved, false if not</returns>
-        public bool SaveChanges()
-        {
-            return _db.SaveChanges();
-        }
+        public bool SaveChanges() => _db.SaveChanges();
 
         /// <summary>
-        /// save the translation to the given file. a full path mast be provided
+        /// save the translation to the given file, file must be of type JSON
         /// </summary>
-        /// <param name="file">the full path to the file</param>
+        /// <param name="file">the JSON file to save data to</param>
         /// <returns>true if saved, false if a problem exist</returns>
-        public bool SaveToFile(string file)
-        {
-            return _db.SaveToFile(file);
-        }
+        /// <exception cref="ArgumentException">if file type is not set to JSON</exception>
+        /// <exception cref="TranslationFileNotSpecifiedExceptions">if file is null or invalid</exception>
+        /// <exception cref="TranslationFileMissingExceptions">if the file not exist</exception>
+        /// <exception cref="NonValidTranslationFileExtensionExceptions">if the doesn't have a .json extension</exception>
+        public bool SaveToFile(IYiSoTranslationFile file) 
+            => _db.SaveToFile(file);
 
         /// <summary>
-        /// read translation from the given file
-        /// the non existing translations will be add to the list of translation
-        /// others will be escaped
+        /// read translation from the given file the non existing translations will be add
+        /// to the list of translation others will be escaped
         /// </summary>
         /// <param name="file">file to read from</param>
-        public void ReadFromFile(string file)
-        {
-            var translationGroupsList = _db.GetTranslationsFromFile(file);
-            AddRange(translationGroupsList);
-        }
+        /// <exception cref="ArgumentException">if file type is not set to JSON</exception>
+        public void ReadFromFile(IYiSoTranslationFile file)
+            => AddRange(YiSoTranslatorJsonFileProvider
+                .GetTranslationsFromFile(file).ToArray());
 
         #endregion
 
         #region DataManipilation
 
         /// <summary>
-        /// Add the translation group to the list
+        /// Add the translations group to the list
         /// </summary>
-        /// <param name="translationGroup">translation group to be added</param>
-        /// <exception cref="TranslationGroupAlreadyExistException">if the translation group Already Exist</exception>
-        public TranslationGroup Add(TranslationGroup translationGroup)
+        /// <param name="TranslationsGroup">translation group to be added</param>
+        /// <exception cref="TranslationsGroupAlreadyExistException">if the translation group Already Exist</exception>
+        public TranslationsGroup Add(TranslationsGroup TranslationsGroup)
         {
-            var tg = Find(translationGroup.Name);
+            var tg = Find(TranslationsGroup.Name);
 
             if (tg != null)
-                throw new TranslationGroupAlreadyExistException(translationGroup.Name);
+                throw new TranslationsGroupAlreadyExistException(TranslationsGroup.Name);
 
-            _db.TranslationsGroups.Add(translationGroup);
+            _db.TranslationsGroups.Add(TranslationsGroup);
 
-            OnDataChanged(ListChangedType.Add, Count - 1, null, translationGroup);
-            return translationGroup;
+            OnTranslationsGoupListChanged(ListChangedType.Add, Count - 1, null, TranslationsGroup);
+            return TranslationsGroup;
         }
 
         /// <summary>
         /// Add the translation groups to the list, only non existing one will be add, others will be escaped
         /// </summary>
-        /// <param name="translationGroups">translation groups to be added</param>
-        public void AddRange(IEnumerable<TranslationGroup> translationGroups)
+        /// <param name="TranslationsGroups">translation groups to be added</param>
+        public void AddRange(params TranslationsGroup[] TranslationsGroups)
         {
-            foreach (var item in translationGroups)
-            {
+            foreach (var item in TranslationsGroups)
                 if (Find(item.Name) == null)
-                {
                     _db.TranslationsGroups.Add(item);
-                }
-            }
         }
 
         /// <summary>
-        /// update the old TranslationGroup name with the new name
+        /// update the old TranslationsGroup name with the new name
+        /// this method will raise the TranslationsGoupListChanged notice that the old record 
+        /// will be set to null because here we only changing the name, the TranslationsGroup
+        /// is still the same reference
         /// </summary>
-        /// <param name="oldTranslationGroupName">the old translation Croup name</param>
-        /// <param name="newTranslationGroupName">the new translation Group</param>
-        /// <returns>the updated TranslationGroup</returns>
-        /// <exception cref="TranslationGroupNotExistException">if the old translation group not exist</exception>
-        /// <exception cref="TranslationGroupAlreadyExistException">if the new translation group Already exist</exception>
-        public TranslationGroup Update(string oldTranslationGroupName, string newTranslationGroupName)
+        /// <param name="oldTranslationsGroupName">the old translation Croup name</param>
+        /// <param name="newTranslationsGroupName">the new translation Group</param>
+        /// <returns>the updated TranslationsGroup</returns>
+        /// <exception cref="TranslationsGroupNotExistException">if the old translation group not exist</exception>
+        /// <exception cref="TranslationsGroupAlreadyExistException">if the new translation group Already exist</exception>
+        public TranslationsGroup Update(string oldTranslationsGroupName, string newTranslationsGroupName)
         {
-            var old = Find(oldTranslationGroupName) 
-                ?? throw new TranslationGroupNotExistException(oldTranslationGroupName);
+            var old = Find(oldTranslationsGroupName)
+                ?? throw new TranslationsGroupNotExistException(oldTranslationsGroupName);
 
-            var newT = Find(newTranslationGroupName)
-                ?? throw new TranslationGroupAlreadyExistException(newTranslationGroupName);
+            var newT = Find(newTranslationsGroupName);
 
-            old.Name = newTranslationGroupName;
+            if (!(newT is null))
+                throw new TranslationsGroupAlreadyExistException(newTranslationsGroupName);
 
-            OnDataChanged(ListChangedType.Update, IndexOf(old), null, old);
+            old.Name = newTranslationsGroupName;
+
+            OnTranslationsGoupListChanged(ListChangedType.Update, IndexOf(old), null, old);
+            return old;
+        }
+
+        /// <summary>
+        /// update the old TranslationsGroup with the new TranslationsGroup
+        /// </summary>
+        /// <param name="oldTranslationsGroup">the old translation Group</param>
+        /// <param name="newTranslationsGroup">the new translation Group</param>
+        /// <returns>the updated TranslationsGroup</returns>
+        /// <exception cref="ArgumentNullException">when you pass a null parameter</exception>
+        /// <exception cref="TranslationsGroupNotExistException">if the old translation group not exist</exception>
+        /// <exception cref="TranslationsGroupAlreadyExistException">if the new translation group Already exist</exception>
+        public TranslationsGroup Update(TranslationsGroup oldTranslationsGroup, TranslationsGroup newTranslationsGroup)
+        {
+            if (oldTranslationsGroup is null)
+                throw new ArgumentNullException("the old Translations group is null");
+
+            if (newTranslationsGroup is null)
+                throw new ArgumentNullException("the new Translations group is null");
+
+            var old = Find(oldTranslationsGroup.Name)
+                ?? throw new TranslationsGroupNotExistException(oldTranslationsGroup.Name);
+
+            var newT = Find(newTranslationsGroup.Name);
+
+            if (!(newT is null))
+                throw new TranslationsGroupAlreadyExistException(newTranslationsGroup.Name);
+
+            _db.TranslationsGroups[IndexOf(old)] = newTranslationsGroup;
+
+            OnTranslationsGoupListChanged(ListChangedType.Update, IndexOf(old), old, newTranslationsGroup);
             return old;
         }
 
@@ -212,26 +240,23 @@ namespace YiSoTranslator.JsonProvider
         /// </summary>
         /// <param name="item">translation group to be removed</param>
         /// <returns>true if the item deleted, false if not</returns>
-        /// <exception cref="TranslationGroupNotExistException">if the translation group not exist</exception>
-        public bool Remove(TranslationGroup item)
-        {
-            return Remove(item.Name);
-        }
+        /// <exception cref="TranslationsGroupNotExistException">if the translation group not exist</exception>
+        public bool Remove(TranslationsGroup item) => Remove(item.Name);
 
         /// <summary>
         /// delete the translations Group from the list
         /// </summary>
-        /// <param name="TranslationGroupName">Name of translation group to be removed</param>
+        /// <param name="TranslationsGroupName">Name of translation group to be removed</param>
         /// <returns>true if the item deleted, false if not</returns>
-        /// <exception cref="TranslationGroupNotExistException">if the translation group not exist</exception>
-        public bool Remove(string TranslationGroupName)
+        /// <exception cref="TranslationsGroupNotExistException">if the translation group not exist</exception>
+        public bool Remove(string TranslationsGroupName)
         {
-            var TG = Find(TranslationGroupName) 
-                ?? throw new TranslationGroupNotExistException(TranslationGroupName);
+            var TG = Find(TranslationsGroupName)
+                ?? throw new TranslationsGroupNotExistException(TranslationsGroupName);
 
             _db.TranslationsGroups.Remove(TG);
 
-            OnDataChanged(ListChangedType.Delete, Count - 1, TG, null);
+            OnTranslationsGoupListChanged(ListChangedType.Delete, Count - 1, TG, null);
             return true;
         }
 
@@ -241,6 +266,7 @@ namespace YiSoTranslator.JsonProvider
         public void Clear()
         {
             _db.TranslationsGroups.Clear();
+            OnTranslationsGoupListChanged(ListChangedType.Clear, -1, null, null);
         }
 
         #endregion
@@ -248,17 +274,30 @@ namespace YiSoTranslator.JsonProvider
         #region Private Methods
 
         /// <summary>
-        /// Raise the DataSourceChanged Event
+        /// Raise the Translations GoupList Changed Event
         /// </summary>
         /// <param name="listChangedType">the change type</param>
         /// <param name="index">index where the change occur</param>
         /// <param name="oldRecord">the old record</param>
         /// <param name="newRecord">the new record</param>
-        private void OnDataChanged(ListChangedType listChangedType, int index, TranslationGroup oldRecord, TranslationGroup newRecord)
-        {
-            DataSourceChanged?
-                .Invoke(this, new TranslationGroupDataSourceChangedEventArgs(listChangedType, index, oldRecord, newRecord));
-        }
+        private void OnTranslationsGoupListChanged(ListChangedType listChangedType, int index, TranslationsGroup oldRecord, TranslationsGroup newRecord)
+            => TranslationsGroupsListChanged?
+                .Invoke(this, new TranslationsGroupsListChangedEventArgs(listChangedType, index, oldRecord, newRecord));
+
+        /// <summary>
+        /// save the changes
+        /// </summary>
+        /// <returns>true if changes are saved</returns>
+        public async Task<bool> SaveChangesAsync()
+            => await Task.Run(() => SaveChanges());
+
+        /// <summary>
+        /// save the translation to file
+        /// </summary>
+        /// <param name="file">file where to save translations</param>
+        /// <returns>true if saved</returns>
+        public Task<bool> SaveToFileAsync(IYiSoTranslationFile file)
+            => Task.Run(() => SaveToFile(file));
 
         #endregion
     }

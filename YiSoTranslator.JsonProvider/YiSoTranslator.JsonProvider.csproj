@@ -5,25 +5,25 @@
     <Authors>Youssef Sellami</Authors>
     <Company>Youssef Sellami</Company>
     <Description>this is the json provider for the YiSoTranslator plugin, this provider will allow you to manage your translation using json files</Description>
-    <Copyright>copyright © 2018 Youssef Sellami. all rights reserved</Copyright>
+    <Copyright>copyright © 2019 Youssef Sellami. all rights reserved</Copyright>
     <PackageTags>Translator, winforms translator, WPF translator, multilanguage application, multilanguage</PackageTags>
     <NeutralLanguage>en</NeutralLanguage>
-    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageIconUrl>http://bit.ly/YiSoTranslator-Logo</PackageIconUrl>
     <PackageProjectUrl>https://youssefsell.github.io/YiSoTranslator</PackageProjectUrl>
     <RepositoryUrl>https://github.com/youssefSell/YiSoTranslator</RepositoryUrl>
     <RepositoryType>GitHub</RepositoryType>
-    <Version>1.0</Version>
-    <PackageReleaseNotes>first release</PackageReleaseNotes>
+    <Version>2.0.0</Version>
+    <PackageReleaseNotes>update the packages and add the implementation of DataSourceChanged Event for monitoring the translation file</PackageReleaseNotes>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <DocumentationFile>C:\Users\youss\Desktop\New\YiSoTranslator.JsonProvider\YiSoTranslator.JsonProvider\bin\Release\netstandard2.0\YiSoTranslator.JsonProvider.xml</DocumentationFile>
+    <DocumentationFile>C:\Users\youss\Desktop\WorkSpace\Projects\Published products\YiSoTranslator.JsonProvider\YiSoTranslator.JsonProvider\bin\Release\netstandard2.0\YiSoTranslator.JsonProvider.xml</DocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
-    <PackageReference Include="YiSoTranslator" Version="2.0.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.1" />
+    <PackageReference Include="YiSoTranslator" Version="2.3.0" />
   </ItemGroup>
 
 </Project>

@@ -6,32 +6,40 @@
     /// A class that represent the JSON file that holds the translations
     /// </summary>
     [System.Diagnostics.DebuggerStepThrough]
-    public class TranslationFile : IYiSoTranslationFile
+    public class JsonTranslationFile : IYiSoTranslationFile
     {
         private string _name;
+        private string _fullName;
 
         /// <summary>
-        /// the name of the file, with extension
+        /// the name of the file, without extension
         /// </summary>
+        /// <exception cref="ArgumentException">if the name is null, empty or withSpace</exception>
+        /// <exception cref="TranslationFolderMissingExceptions">if the translation folder not found</exception>
+        /// <exception cref="TranslationFileMissingExceptions">if the translation JSON file not found</exception>
+        /// <exception cref="NonValidTranslationFileExtensionExceptions">if the translation file Extension not set to .json</exception>
         public string Name
         {
             get => _name;
             set
             {
-                if (value.IsNull())
-                    throw new ArgumentNullException();
-
-                var path = FileHelper.GetJsonFilePath(value);
-
+                _fullName = FileHelper.GetJsonFilePath(value);
                 _name = value;
-                FullName = path;
             }
         }
 
         /// <summary>
-        /// the full name of the file
+        /// the full path of the file
         /// </summary>
-        public string FullName { get; private set; }
+        public string FullName
+        {
+            get => _fullName;
+            set
+            {
+                _name = FileHelper.GetJsonFileName(value);
+                _fullName = value;
+            }
+        }
 
         /// <summary>
         /// the type of the file
@@ -41,10 +49,17 @@
         /// <summary>
         /// construct with initializing the FullName
         /// </summary>
-        public TranslationFile(string name)
+        public JsonTranslationFile(string file, bool IsFullPath = false)
         {
-            Name = name;
             Type = FileType.Json;
+
+            if (IsFullPath)
+            {
+                FullName = file;
+                return;
+            }
+
+            Name = file;
         }
 
         #region Overrides
@@ -56,7 +71,7 @@
         /// <returns>Boolean value of the comparison</returns>
         public override bool Equals(object obj)
         {
-            var file = (TranslationFile)obj;
+            var file = (JsonTranslationFile)obj;
             return file.FullName == this.FullName;
         }
 
@@ -77,7 +92,7 @@
         {
             return base.GetHashCode();
         }
-        
+
         #endregion
     }
 }

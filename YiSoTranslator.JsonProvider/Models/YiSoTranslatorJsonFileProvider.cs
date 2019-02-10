@@ -1,48 +1,50 @@
 ﻿namespace YiSoTranslator.JsonProvider
 {
-    using Newtonsoft.Json;
     using System;
+    using System.IO;
+    using Newtonsoft.Json;
     using System.Collections.Generic;
-    using System.Linq;
 
     /// <summary>
     /// warper class on the core implementation of the JSON translation provider
     /// </summary>
     [System.Diagnostics.DebuggerStepThrough]
-    internal class YiSoTranslatorJsonFileProvider : IDisposable
+    internal class YiSoTranslatorJsonFileProvider
     {
-        /// <summary>
-        /// the collection of translation groups
-        /// </summary>
-        public IList<TranslationGroup> TranslationsGroups { get; set; }
-        
-        /// <summary>
-        /// the translation file
-        /// </summary>
-        public TranslationFile TranslationFile { get; set; }
-
-        /// <summary>
-        /// Event raised when the list is changed
-        /// </summary>
-        public event EventHandler<TranslationGroupDataSourceChangedEventArgs> ListChanged;
+        CustomFileWatcher _watcher;
 
         /// <summary>
         /// constructor with the Translation file
         /// </summary>
         /// <param name="translationFile">the translation file</param>
-        public YiSoTranslatorJsonFileProvider(TranslationFile translationFile)
+        public YiSoTranslatorJsonFileProvider(JsonTranslationFile translationFile)
         {
-            GetTranslationsFromFile(translationFile);
+            TranslationFile = translationFile;
+
+            TranslationsGroups = JsonConvert
+                .DeserializeObject<List<TranslationsGroup>>(TranslationFile.GetContent())
+                ?? new List<TranslationsGroup>();
+
+            InitWatcher();
         }
 
         /// <summary>
-        /// dispose the object
+        /// event raised when the file has been modified
         /// </summary>
-        public void Dispose()
-        {
-            TranslationFile = null;
-            TranslationsGroups = null;
-        }
+        public event EventHandler<DataSourceChangedEventArgs> DataSourceChanged;
+
+        /// <summary>
+        /// the collection of translation groups
+        /// </summary>
+        public IList<TranslationsGroup> TranslationsGroups { get; set; }
+
+        /// <summary>
+        /// the translation file
+        /// </summary>
+        /// <exception cref="ArgumentNullException">if the file is null</exception>
+        /// <exception cref="NonValidTranslationFileExtensionExceptions">if the file extension not set to JSON</exception>
+        /// <exception cref="FileNotFoundException">if the file doesn't exist</exception>
+        public JsonTranslationFile TranslationFile { get; }
 
         /// <summary>
         /// save the changes
@@ -50,32 +52,7 @@
         /// <returns>1 if saved, -1 if any problem</returns>
         public bool SaveChanges()
         {
-            return SaveToFile(TranslationFile);
-        }
-
-        /// <summary>
-        /// get the list of translations from the JSON File and 
-        /// populate the list property in current manager object
-        /// and assign file to Translation File priority
-        /// </summary>
-        /// <param name="file"></param>
-        public void GetTranslationsFromFile(TranslationFile file)
-        {
-            TranslationsGroups = JsonConvert.DeserializeObject<List<TranslationGroup>>(file.GetContent())
-                     ?? new List<TranslationGroup>();
-
-            ListChanged?.Invoke(this, new TranslationGroupDataSourceChangedEventArgs(ListChangedType.NewRefrence, -1, null, null));
-            TranslationFile = file;
-        }
-
-        /// <summary>
-        /// get the list of translations from the JSON File
-        /// </summary>
-        /// <param name="file">file where to read the data</param>
-        public IList<TranslationGroup> GetTranslationsFromFile(string file)
-        {
-            return JsonConvert.DeserializeObject<List<TranslationGroup>>(FileHelper.GetContent(file))
-                     ?? new List<TranslationGroup>();
+            return TranslationFile.SaveContent(TranslationsGroups.AsJson());
         }
 
         /// <summary>
@@ -83,27 +60,94 @@
         /// </summary>
         /// <param name="file">the translation file where the data will be saved to</param>
         /// <returns>true if saved, false if a problem exist</returns>
+        /// <exception cref="ArgumentException">if file type is not set to JSON</exception>
         /// <exception cref="TranslationFileNotSpecifiedExceptions">if file is null or invalid</exception>
         /// <exception cref="TranslationFileMissingExceptions">if the file not exist</exception>
         /// <exception cref="NonValidTranslationFileExtensionExceptions">if the doesn't have a .json extension</exception>
-        public bool SaveToFile(TranslationFile file)
+        public bool SaveToFile(IYiSoTranslationFile file)
         {
-            string json = JsonConvert.SerializeObject(TranslationsGroups);
-            return file.SaveContent(json);
+            if (file.Type != FileType.Json)
+                throw new ArgumentException("Only JSON Files Types are accepted");
+
+            return (file as JsonTranslationFile).SaveContent(TranslationsGroups.AsJson());
+        }
+
+        private void InitWatcher()
+        {
+            _watcher = new CustomFileWatcher()
+            {
+                DirectoryToWatch = Path.GetDirectoryName(TranslationFile.FullName),
+                FileToWatch = $"{TranslationFile.Name}.json",
+                EnableRaisingEvents = true
+            };
+
+            _watcher.FileDeleted += (s, e)
+                => DataSourceChanged?.Invoke(this, new DataSourceChangedEventArgs(YiSoTranslator.DataSourceChanged.Deleted));
+            _watcher.FileUpdated += (s, e)
+                => DataSourceChanged?.Invoke(this, new DataSourceChangedEventArgs(YiSoTranslator.DataSourceChanged.Updated));
         }
 
         /// <summary>
-        /// save the translation to the given file. a full path mast be provided
+        /// get the list of translations from the JSON File
         /// </summary>
-        /// <param name="file">the full path to the file</param>
-        /// <returns>true if saved, false if a problem exist</returns>
-        /// <exception cref="TranslationFileNotSpecifiedExceptions">if file is null or invalid</exception>
-        /// <exception cref="TranslationFileMissingExceptions">if the file not exist</exception>
-        /// <exception cref="NonValidTranslationFileExtensionExceptions">if the doesn't have a .json extension</exception>
-        public bool SaveToFile(string file)
+        /// <param name="file">file where to read the data</param>
+        /// <exception cref="ArgumentException">if file type is not set to JSON</exception>
+        public static IEnumerable<TranslationsGroup> GetTranslationsFromFile(IYiSoTranslationFile file)
         {
-            string json = JsonConvert.SerializeObject(TranslationsGroups.ToArray());
-            return FileHelper.SaveContent(file, json);
+            if (file.Type != FileType.Json)
+                throw new ArgumentException("Only JSON Files Types are accepted");
+
+            return JsonConvert
+                .DeserializeObject<List<TranslationsGroup>>(FileHelper.GetContent(file as JsonTranslationFile))
+                ?? new List<TranslationsGroup>();
+        }
+
+        //inner class
+        class CustomFileWatcher
+        {
+            FileSystemWatcher _watcher;
+            int _eventRaisedCount = 0;
+
+            public event EventHandler<EventArgs> FileUpdated;
+            public event EventHandler<EventArgs> FileDeleted;
+
+            public CustomFileWatcher()
+            {
+                _watcher = new FileSystemWatcher()
+                {
+                    IncludeSubdirectories = false,
+                };
+
+                _watcher.Changed += Watcher_Changed;
+                _watcher.Renamed += Watcher_Changed;
+                _watcher.Deleted += Watcher_Deleted;
+            }
+
+            ~CustomFileWatcher()
+            {
+                _watcher.Changed -= Watcher_Changed;
+                _watcher.Renamed -= Watcher_Changed;
+                _watcher.Deleted -= Watcher_Deleted;
+                _watcher.Dispose();
+            }
+
+            public string DirectoryToWatch { get => _watcher.Path; set => _watcher.Path = value; }
+            public string FileToWatch { get => _watcher.Filter; set => _watcher.Filter = value; }
+            public bool EnableRaisingEvents { get => _watcher.EnableRaisingEvents; set => _watcher.EnableRaisingEvents = value; }
+
+            private void Watcher_Changed(object sender, FileSystemEventArgs e)
+            {
+                if (_eventRaisedCount == 0)
+                {
+                    FileUpdated?.Invoke(this, new EventArgs());
+                    _eventRaisedCount++;
+                }
+                else if (_eventRaisedCount > 0)
+                    _eventRaisedCount = 0;
+            }
+
+            private void Watcher_Deleted(object sender, FileSystemEventArgs e)
+                => FileDeleted?.Invoke(this, new EventArgs());
         }
     }
 }
