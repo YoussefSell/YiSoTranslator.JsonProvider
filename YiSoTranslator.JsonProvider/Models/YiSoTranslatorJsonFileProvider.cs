@@ -20,18 +20,27 @@
         public YiSoTranslatorJsonFileProvider(JsonTranslationFile translationFile)
         {
             TranslationFile = translationFile;
-
-            TranslationsGroups = JsonConvert
-                .DeserializeObject<List<TranslationsGroup>>(TranslationFile.GetContent())
-                ?? new List<TranslationsGroup>();
-
+            GetTranslations();
             InitWatcher();
         }
+
+        /// <summary>
+        /// read the translation from the source
+        /// </summary>
+        private void GetTranslations()
+            => TranslationsGroups = JsonConvert
+                    .DeserializeObject<List<TranslationsGroup>>(TranslationFile.GetContent())
+                    ?? new List<TranslationsGroup>();
 
         /// <summary>
         /// event raised when the file has been modified
         /// </summary>
         public event EventHandler<DataSourceChangedEventArgs> DataSourceChanged;
+
+        /// <summary>
+        /// event raised when the list changed
+        /// </summary>
+        public event EventHandler<TranslationsGroupsListChangedEventArgs> TranslationsGroupsListChanged;
 
         /// <summary>
         /// the collection of translation groups
@@ -45,6 +54,21 @@
         /// <exception cref="NonValidTranslationFileExtensionExceptions">if the file extension not set to JSON</exception>
         /// <exception cref="FileNotFoundException">if the file doesn't exist</exception>
         public JsonTranslationFile TranslationFile { get; }
+
+        /// <summary>
+        /// true to create back up file if the file get deleted
+        /// </summary>
+        public bool CreateBackupOnFileDeletion { get; set; } = false;
+        
+        /// <summary>
+        /// by setting this to true you will start monitoring changes on the file, 
+        /// so that if the file get updated or deleted you will be notified
+        /// </summary>
+        public bool AllowDataSourceChangedEvent
+        {
+            get => _watcher.EnableRaisingEvents;
+            set => _watcher.EnableRaisingEvents = value;
+        }
 
         /// <summary>
         /// save the changes
@@ -72,17 +96,33 @@
             return (file as JsonTranslationFile).SaveContent(TranslationsGroups.AsJson());
         }
 
+        /// <summary>
+        /// reload the translations
+        /// </summary>
+        internal void Reload()
+        {
+            GetTranslations();
+            TranslationsGroupsListChanged?
+                .Invoke(this,
+                new TranslationsGroupsListChangedEventArgs(ListChangedType.NewRefrence, -1, null, null));
+        }
+
         private void InitWatcher()
         {
             _watcher = new CustomFileWatcher()
             {
                 DirectoryToWatch = Path.GetDirectoryName(TranslationFile.FullName),
                 FileToWatch = $"{TranslationFile.Name}.json",
-                EnableRaisingEvents = true
+                EnableRaisingEvents = false
             };
 
-            _watcher.FileDeleted += (s, e)
-                => DataSourceChanged?.Invoke(this, new DataSourceChangedEventArgs(YiSoTranslator.DataSourceChanged.Deleted));
+            _watcher.FileDeleted += (s, e) =>
+            {
+                if (CreateBackupOnFileDeletion)
+                    FileHelper.CreateBackUp(TranslationFile.Name, TranslationsGroups.AsJson());
+
+                DataSourceChanged?.Invoke(this, new DataSourceChangedEventArgs(YiSoTranslator.DataSourceChanged.Deleted));
+            };
             _watcher.FileUpdated += (s, e)
                 => DataSourceChanged?.Invoke(this, new DataSourceChangedEventArgs(YiSoTranslator.DataSourceChanged.Updated));
         }
@@ -111,6 +151,10 @@
             public event EventHandler<EventArgs> FileUpdated;
             public event EventHandler<EventArgs> FileDeleted;
 
+            public string DirectoryToWatch { get => _watcher.Path; set => _watcher.Path = value; }
+            public string FileToWatch { get => _watcher.Filter; set => _watcher.Filter = value; }
+            public bool EnableRaisingEvents { get => _watcher.EnableRaisingEvents; set => _watcher.EnableRaisingEvents = value; }
+
             public CustomFileWatcher()
             {
                 _watcher = new FileSystemWatcher()
@@ -131,19 +175,15 @@
                 _watcher.Dispose();
             }
 
-            public string DirectoryToWatch { get => _watcher.Path; set => _watcher.Path = value; }
-            public string FileToWatch { get => _watcher.Filter; set => _watcher.Filter = value; }
-            public bool EnableRaisingEvents { get => _watcher.EnableRaisingEvents; set => _watcher.EnableRaisingEvents = value; }
-
             private void Watcher_Changed(object sender, FileSystemEventArgs e)
             {
                 if (_eventRaisedCount == 0)
-                {
-                    FileUpdated?.Invoke(this, new EventArgs());
                     _eventRaisedCount++;
-                }
                 else if (_eventRaisedCount > 0)
+                {
                     _eventRaisedCount = 0;
+                    FileUpdated?.Invoke(this, new EventArgs());
+                }
             }
 
             private void Watcher_Deleted(object sender, FileSystemEventArgs e)

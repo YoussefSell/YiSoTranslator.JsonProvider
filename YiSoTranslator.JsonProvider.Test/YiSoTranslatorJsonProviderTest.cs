@@ -1,8 +1,8 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Linq;
-using System.Collections.Generic;
 using System.IO;
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace YiSoTranslator.JsonProvider.Test
@@ -10,17 +10,20 @@ namespace YiSoTranslator.JsonProvider.Test
     [TestClass]
     public class YiSoTranslatorJsonProviderTest
     {
-        YiSoTranslatorJsonProvider _provider;
+        YiSoTranslatorJsonProvider _provider = new YiSoTranslatorJsonProvider("main");
+        static readonly string _testfile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "test.json");
+        static readonly string _logFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "logFile.txt");
 
         [TestInitialize]
         public void Init()
         {
-            _provider = new YiSoTranslatorJsonProvider("main");
+            if (!File.Exists(_testfile))
+                File.Create(_testfile).Dispose();
 
             var tg = _provider.Find("hello_text");
             _provider.Clear();
             _provider.Add(tg);
-            _provider.SaveChanges();
+            var saved = _provider.SaveChanges();
         }
 
         [TestMethod]
@@ -32,10 +35,11 @@ namespace YiSoTranslator.JsonProvider.Test
 
             //- Act
             _provider.Add(translationGroup);
-            _provider.SaveChanges();
+            bool saved = _provider.SaveChanges();
 
             //- Assert
             Assert.AreEqual(2, _provider.Count);
+            Assert.AreEqual(true, saved);
         }
 
         [TestMethod]
@@ -56,12 +60,13 @@ namespace YiSoTranslator.JsonProvider.Test
 
             //- Act
             _provider.Add(translationGroup);
-            _provider.SaveChanges();
+            bool saved = _provider.SaveChanges();
 
             //- Assert
             Assert.AreEqual(2, _provider.Count);
             Assert.AreEqual(ListChangedType.Add, operationtype);
             Assert.AreEqual("testwithevent_txt", NewRecordName);
+            Assert.AreEqual(true, saved);
         }
 
         [TestMethod]
@@ -83,10 +88,11 @@ namespace YiSoTranslator.JsonProvider.Test
                 translationGroup2,
                 translationGroup3
             });
-            _provider.SaveChanges();
+            bool saved = _provider.SaveChanges();
 
             //- Assert
             Assert.AreEqual(4, _provider.Count);
+            Assert.AreEqual(true, saved);
         }
 
         [TestMethod]
@@ -148,7 +154,7 @@ namespace YiSoTranslator.JsonProvider.Test
 
             //- Assert
             Assert.AreEqual(0, _provider.Count);
-            Assert.AreEqual("Hello_text", removedRecordName);
+            Assert.AreEqual("hello_text", removedRecordName);
             Assert.AreEqual(ListChangedType.Delete, operationtype);
         }
 
@@ -261,13 +267,7 @@ namespace YiSoTranslator.JsonProvider.Test
         [TestMethod]
         public void ValidSaveTofileOperation()
         {
-            var _path = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            _path = Path.Combine(_path, "test.json");
-
-            if (!File.Exists(_path))
-                File.Create(_path);
-
-            var file = new JsonTranslationFile(_path, true);
+            var file = new JsonTranslationFile(_testfile, true);
 
             var translationGroup = new TranslationsGroup("test1_txt")
                 .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
@@ -294,13 +294,7 @@ namespace YiSoTranslator.JsonProvider.Test
         [TestMethod]
         public void ValidReadFromfileOperation()
         {
-            var _path = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            _path = Path.Combine(_path, "test2.json");
-
-            if (!File.Exists(_path))
-                File.Create(_path);
-
-            var file = new JsonTranslationFile(_path, true);
+            var file = new JsonTranslationFile(_testfile, true);
             var provider = new YiSoTranslatorJsonProvider(file);
 
             var translationGroup = new TranslationsGroup("test1_txt")
@@ -318,33 +312,30 @@ namespace YiSoTranslator.JsonProvider.Test
                 translationGroup3
             });
 
-            provider.SaveChanges();
-
-            //give the process some time to release the file
-            Thread.Sleep(100);
+            bool saved = provider.SaveChanges();
 
             _provider.ReadFromFile(file);
 
             Assert.AreEqual(4, _provider.Count);
+            Assert.AreEqual(true, saved);
         }
 
         [TestMethod]
         public void ValidDataSourceChangedUpdateEventRaising()
         {
-            var _path = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            _path = Path.Combine(_path, "test.json");
-
-            if (!File.Exists(_path))
-                File.Create(_path);
-
-            var filewithFullName = new JsonTranslationFile(_path, true);
+            var filewithFullName = new JsonTranslationFile(_testfile, true);
             var type = "";
 
-            var provider1 = new YiSoTranslatorJsonProvider(filewithFullName);
+            var provider1 = new YiSoTranslatorJsonProvider(filewithFullName)
+            {
+                AllowDataSourceChangedEvent = true
+            };
+
             provider1.DataSourceChanged += (s, e) =>
             {
                 type = e.ChangeType.ToString();
-                Console.WriteLine($"{e.ChangeType}");
+                Console.WriteLine($"{type}");
+                Assert.AreEqual(DataSourceChanged.Updated.ToString(), type);
             };
 
             var translationGroup = new TranslationsGroup("test1_txt")
@@ -363,35 +354,162 @@ namespace YiSoTranslator.JsonProvider.Test
             });
 
             _provider.SaveToFile(filewithFullName);
+            provider1.Reload();
 
-            Assert.AreEqual(DataSourceChanged.Updated.ToString(), type);
+            Assert.AreEqual(4, provider1.Count); // the new 3 added translationsGroups + the existing one
         }
 
         [TestMethod]
         public void ValidDataSourceChangedDeleteEventRaising()
         {
-            var _path = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            _path = Path.Combine(_path, "test.json");
-
-            if (!File.Exists(_path))
-                File.Create(_path);
-
-            var filewithFullName = new JsonTranslationFile(_path, true);
+            var filewithFullName = new JsonTranslationFile(_testfile, true);
             var type = "";
 
-            var provider1 = new YiSoTranslatorJsonProvider(filewithFullName);
+            var provider1 = new YiSoTranslatorJsonProvider(filewithFullName)
+            {
+                AllowDataSourceChangedEvent = true
+            };
+
             provider1.DataSourceChanged += (s, e) =>
             {
                 type = e.ChangeType.ToString();
                 Console.WriteLine($"{e.ChangeType}");
+                Assert.AreEqual(DataSourceChanged.Deleted.ToString(), type);
             };
 
             File.Delete(filewithFullName.FullName);
+        }
 
-            // give it some time to catch the event, 10 millisecond is enough
-            Thread.Sleep(10);
+        [TestMethod]
+        public void ValidDataSourceChangedDeleteEventwithBackUpRaising()
+        {
+            var filewithFullName = new JsonTranslationFile(_testfile, true);
+            var type = "";
 
-            Assert.AreEqual(DataSourceChanged.Deleted.ToString(), type);
+            var provider1 = new YiSoTranslatorJsonProvider(filewithFullName)
+            {
+                AllowDataSourceChangedEvent = true,
+                CreateBackupOnFileDeletion = true
+            };
+
+            provider1.DataSourceChanged += (s, e) =>
+            {
+                type = e.ChangeType.ToString();
+                Console.WriteLine($"{type}");
+                Assert.AreEqual(DataSourceChanged.Deleted.ToString(), type);
+            };
+
+            File.Delete(filewithFullName.FullName);
+        }
+
+        [TestMethod]
+        public void ValidReloadOperation()
+        {
+            var translationGroup = new TranslationsGroup("test1_txt")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            var translationGroup2 = new TranslationsGroup("test2_txt")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            var translationGroup3 = new TranslationsGroup("test3_txt")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            _provider.AddRange(new TranslationsGroup[] {
+                translationGroup,
+                translationGroup2,
+                translationGroup3
+            });
+
+            _provider.SaveChanges();
+            _provider.Reload();
+
+            Assert.AreEqual(4, _provider.Count); // the new 3 added translationsGroups + the existing one
+        }
+
+        [TestMethod]
+        public void ValidReloadOperation2()
+        {
+            var translationGroup = new TranslationsGroup("test1_txt")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            var translationGroup2 = new TranslationsGroup("test2_txt")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            var translationGroup3 = new TranslationsGroup("test3_txt")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            _provider.AddRange(new TranslationsGroup[] {
+                translationGroup,
+                translationGroup2,
+                translationGroup3
+            });
+
+            _provider.Reload(true);
+
+            Assert.AreEqual(1, _provider.Count); 
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(UnsavedChangesExceptions))]
+        public void InValidReloadOperationWithAdd()
+        {
+            var translationGroup = new TranslationsGroup("test1_txt")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            _provider.Add(translationGroup);
+
+            _provider.Reload();
+
+            Assert.AreEqual(1, _provider.Count);
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(UnsavedChangesExceptions))]
+        public void InValidReloadOperationWithAddRAnge()
+        {
+            var translationGroup = new TranslationsGroup("test1_txt")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            var translationGroup2 = new TranslationsGroup("test2_txt")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            var translationGroup3 = new TranslationsGroup("test3_txt")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            _provider.AddRange(new TranslationsGroup[] {
+                translationGroup,
+                translationGroup2,
+                translationGroup3
+            });
+
+            _provider.Reload();
+
+            Assert.AreEqual(1, _provider.Count);
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(UnsavedChangesExceptions))]
+        public void InValidReloadOperationWithRemove()
+        {
+            _provider.Remove("hello_text");
+
+            _provider.Reload();
+
+            Assert.AreEqual(1, _provider.Count);
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(UnsavedChangesExceptions))]
+        public void InValidReloadOperationWithupdate()
+        {
+            var tg = _provider.Find("hello_text");
+            var indexoldTg = _provider.IndexOf(tg);
+            var ntg = new TranslationsGroup("updateTest_text")
+                .Add(new Translation(Languages.English_UnitedStates.Code(), "test translation"));
+
+            _provider.Update(tg, ntg);
+
+            _provider.Reload();
         }
     }
 }

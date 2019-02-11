@@ -8,13 +8,13 @@
     <Copyright>copyright © 2019 Youssef Sellami. all rights reserved</Copyright>
     <PackageTags>Translator, winforms translator, WPF translator, multilanguage application, multilanguage</PackageTags>
     <NeutralLanguage>en</NeutralLanguage>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageIconUrl>http://bit.ly/YiSoTranslator-Logo</PackageIconUrl>
     <PackageProjectUrl>https://youssefsell.github.io/YiSoTranslator</PackageProjectUrl>
     <RepositoryUrl>https://github.com/youssefSell/YiSoTranslator</RepositoryUrl>
     <RepositoryType>GitHub</RepositoryType>
-    <Version>2.0.0</Version>
-    <PackageReleaseNotes>update the packages and add the implementation of DataSourceChanged Event for monitoring the translation file</PackageReleaseNotes>
+    <Version>2.1.0</Version>
+    <PackageReleaseNotes>implement Load and backup functionality and give control on raising the DataSourceChanged event</PackageReleaseNotes>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="12.0.1" />
-    <PackageReference Include="YiSoTranslator" Version="2.3.0" />
+    <PackageReference Include="YiSoTranslator" Version="2.3.1" />
   </ItemGroup>
 
 </Project>

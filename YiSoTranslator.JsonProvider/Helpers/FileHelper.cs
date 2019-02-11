@@ -63,12 +63,12 @@
             if (fileName.IsNull())
                 throw new ArgumentException();
 
-            var file = new FileInfo(Path.Combine(TranslationFolder, $"{fileName}.json"));
+            var path = Path.Combine(TranslationFolder, $"{fileName}.json");
 
-            if (!file.Exists)
+            if (!File.Exists(path))
                 throw new TranslationFileMissingExceptions(fileName);
 
-            return file.FullName;
+            return path;
         }
 
         /// <summary>
@@ -84,13 +84,13 @@
             if (filePath.IsNull())
                 throw new ArgumentException();
 
-            var file = new FileInfo(filePath);
-
-            if (!file.Exists)
+            if (!File.Exists(filePath))
                 throw new TranslationFileMissingExceptions(filePath);
 
-            if (file.Extension != ".json")
-                throw new NonValidTranslationFileExtensionExceptions(file.Extension);
+            var extension = Path.GetExtension(filePath);
+
+            if (extension != ".json")
+                throw new NonValidTranslationFileExtensionExceptions(extension);
 
             return Path.GetFileNameWithoutExtension(filePath);
         }
@@ -128,6 +128,20 @@
         }
 
         /// <summary>
+        /// create a backUp file
+        /// </summary>
+        /// <param name="fileName"></param>
+        /// <param name="content"></param>
+        internal static void CreateBackUp(string fileName, string content)
+        {
+            if (!Directory.Exists(BackUpFolder))
+                Directory.CreateDirectory(BackUpFolder);
+
+            var backupfile = Path.Combine(BackUpFolder, $"{fileName}-backup.json");
+            File.WriteAllText(backupfile, content);
+        }
+       
+        /// <summary>
         /// validate the translation File
         /// </summary>
         /// <param name="file">the file to check</param>
@@ -139,12 +153,12 @@
             if (file is null)
                 throw new ArgumentNullException("the file is null");
 
-            var fileinfo = new FileInfo(file.FullName);
+            var extention = Path.GetExtension(file.FullName);
 
-            if (fileinfo.Extension != ".json")
-                throw new NonValidTranslationFileExtensionExceptions(fileinfo.Extension);
+            if (extention != ".json")
+                throw new NonValidTranslationFileExtensionExceptions(extention);
 
-            if (!fileinfo.Exists)
+            if (!File.Exists(file.FullName))
                 throw new FileNotFoundException("the file is not exist");
         }
     }

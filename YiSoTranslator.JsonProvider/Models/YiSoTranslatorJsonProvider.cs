@@ -13,6 +13,7 @@ namespace YiSoTranslator.JsonProvider
     {
         #region Private fields
 
+        private bool _unsavedChanges;
         private readonly YiSoTranslatorJsonFileProvider _db;
 
         #endregion
@@ -47,6 +48,25 @@ namespace YiSoTranslator.JsonProvider
         /// </summary>
         public event EventHandler<DataSourceChangedEventArgs> DataSourceChanged;
 
+        /// <summary>
+        /// true to create back up file if the file get deleted
+        /// </summary>
+        public bool CreateBackupOnFileDeletion
+        {
+            get => _db.CreateBackupOnFileDeletion;
+            set => _db.CreateBackupOnFileDeletion = value;
+        }
+
+        /// <summary>
+        /// by setting this to true you will start monitoring changes on the file, 
+        /// so that if the file get updated or deleted you will be notified
+        /// </summary>
+        public bool AllowDataSourceChangedEvent
+        {
+            get => _db.AllowDataSourceChangedEvent;
+            set => _db.AllowDataSourceChangedEvent = value;
+        }
+
         #endregion
 
         #region Constructors
@@ -57,6 +77,7 @@ namespace YiSoTranslator.JsonProvider
         /// <param name="translationFile">the translation file</param>
         public YiSoTranslatorJsonProvider(JsonTranslationFile translationFile)
         {
+            _unsavedChanges = false;
             _db = new YiSoTranslatorJsonFileProvider(translationFile);
             _db.DataSourceChanged += (s, e) => DataSourceChanged?.Invoke(this, e);
         }
@@ -120,7 +141,28 @@ namespace YiSoTranslator.JsonProvider
         /// save the translations to the dataSource (JSON file associated with this instant)
         /// </summary>
         /// <returns>true if data is saved, false if not</returns>
-        public bool SaveChanges() => _db.SaveChanges();
+        public bool SaveChanges()
+        {
+            if (_db.SaveChanges())
+                _unsavedChanges = false;
+
+            return !_unsavedChanges;
+        }
+
+        /// <summary>
+        /// save the changes
+        /// </summary>
+        /// <returns>true if changes are saved</returns>
+        public async Task<bool> SaveChangesAsync()
+            => await Task.Run(() => SaveChanges());
+
+        /// <summary>
+        /// save the translation to file
+        /// </summary>
+        /// <param name="file">file where to save translations</param>
+        /// <returns>true if saved</returns>
+        public Task<bool> SaveToFileAsync(IYiSoTranslationFile file)
+            => Task.Run(() => SaveToFile(file));
 
         /// <summary>
         /// save the translation to the given file, file must be of type JSON
@@ -131,7 +173,7 @@ namespace YiSoTranslator.JsonProvider
         /// <exception cref="TranslationFileNotSpecifiedExceptions">if file is null or invalid</exception>
         /// <exception cref="TranslationFileMissingExceptions">if the file not exist</exception>
         /// <exception cref="NonValidTranslationFileExtensionExceptions">if the doesn't have a .json extension</exception>
-        public bool SaveToFile(IYiSoTranslationFile file) 
+        public bool SaveToFile(IYiSoTranslationFile file)
             => _db.SaveToFile(file);
 
         /// <summary>
@@ -143,6 +185,21 @@ namespace YiSoTranslator.JsonProvider
         public void ReadFromFile(IYiSoTranslationFile file)
             => AddRange(YiSoTranslatorJsonFileProvider
                 .GetTranslationsFromFile(file).ToArray());
+
+        /// <summary>
+        /// re read the translation from the source note that the function has a flag to
+        /// discard Changes by default is set to false, so that if you have unsaved changes
+        /// you will get an exception
+        /// </summary>
+        /// <param name="discardChanges"></param>
+        /// <exception cref="UnsavedChangesExceptions">if you have unsaved changes</exception>
+        public void Reload(bool discardChanges = false)
+        {
+            if (_unsavedChanges && !discardChanges)
+                throw new UnsavedChangesExceptions();
+
+            _db.Reload();
+        }
 
         #endregion
 
@@ -174,7 +231,10 @@ namespace YiSoTranslator.JsonProvider
         {
             foreach (var item in TranslationsGroups)
                 if (Find(item.Name) == null)
+                {
                     _db.TranslationsGroups.Add(item);
+                    OnTranslationsGoupListChanged(ListChangedType.Add, Count - 1, null, item);
+                }
         }
 
         /// <summary>
@@ -281,24 +341,11 @@ namespace YiSoTranslator.JsonProvider
         /// <param name="oldRecord">the old record</param>
         /// <param name="newRecord">the new record</param>
         private void OnTranslationsGoupListChanged(ListChangedType listChangedType, int index, TranslationsGroup oldRecord, TranslationsGroup newRecord)
-            => TranslationsGroupsListChanged?
-                .Invoke(this, new TranslationsGroupsListChangedEventArgs(listChangedType, index, oldRecord, newRecord));
-
-        /// <summary>
-        /// save the changes
-        /// </summary>
-        /// <returns>true if changes are saved</returns>
-        public async Task<bool> SaveChangesAsync()
-            => await Task.Run(() => SaveChanges());
-
-        /// <summary>
-        /// save the translation to file
-        /// </summary>
-        /// <param name="file">file where to save translations</param>
-        /// <returns>true if saved</returns>
-        public Task<bool> SaveToFileAsync(IYiSoTranslationFile file)
-            => Task.Run(() => SaveToFile(file));
-
+        {
+            _unsavedChanges = true;
+            TranslationsGroupsListChanged?
+                  .Invoke(this, new TranslationsGroupsListChangedEventArgs(listChangedType, index, oldRecord, newRecord));
+        }
         #endregion
     }
 }
